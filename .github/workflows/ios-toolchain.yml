@@ -1,0 +1,38 @@
+﻿name: iOS Toolchain Check
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ios-toolchain:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System
+        run: |
+          sw_vers
+          uname -m
+
+      - name: Xcode
+        run: |
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Swift
+        run: |
+          swift --version
+
+      - name: iOS SDK
+        run: |
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Swift Package Test
+        run: |
+          swift test
