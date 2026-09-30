@@ -1,0 +1,46 @@
+name: AIOBS-iOS
+
+options:
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+packages:
+  HaishinKit:
+    url: https://github.com/HaishinKit/HaishinKit.swift.git
+    exactVersion: 2.2.5
+
+targets:
+  AIOBS-iOS:
+    type: application
+    platform: iOS
+
+    sources:
+      - path: App
+      - path: Sources/iOS
+
+    dependencies:
+      - package: HaishinKit
+        products:
+          - HaishinKit
+          - SRTHaishinKit
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.relaxpuke.aiobs.ios
+        PRODUCT_NAME: AIOBS-iOS
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: true
+
+    info:
+      properties:
+        NSCameraUsageDescription: "AIOBS uses the camera for live video capture and tracking."
+        NSLocalNetworkUsageDescription: "AIOBS uses the local network to stream video and exchange tracking data with the PC."
+        UIBackgroundModes:
+          - audio
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
