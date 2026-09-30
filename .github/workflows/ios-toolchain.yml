@@ -12,27 +12,51 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: System
+        shell: bash
         run: |
+          set -euxo pipefail
+          echo "=== macOS ==="
           sw_vers
+          echo "=== Architecture ==="
           uname -m
 
       - name: Xcode
+        shell: bash
         run: |
+          set -euxo pipefail
+          echo "=== Xcode installations ==="
+          ls -1 /Applications | grep -E '^Xcode.*\.app$' || true
+          echo "=== Select Xcode 26.6 ==="
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          echo "=== xcode-select ==="
           xcode-select -p
+          echo "=== xcodebuild ==="
           xcodebuild -version
 
       - name: Swift
+        shell: bash
         run: |
+          set -euxo pipefail
           swift --version
 
       - name: iOS SDK
+        shell: bash
         run: |
+          set -euxo pipefail
+          echo "=== iphoneos SDK ==="
           xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-path
+          echo "=== iphonesimulator SDK ==="
           xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-path
+          echo "=== Installed SDKs ==="
+          xcodebuild -showsdks
 
       - name: Swift Package Test
+        shell: bash
         run: |
-          swift test
+          set -euxo pipefail
+          swift test -v
