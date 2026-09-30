@@ -35,11 +35,12 @@ targets:
         GENERATE_INFOPLIST_FILE: true
 
     info:
+      path: App/Info.plist
       properties:
         NSCameraUsageDescription: "AIOBS uses the camera for live video capture and tracking."
         NSLocalNetworkUsageDescription: "AIOBS uses the local network to stream video and exchange tracking data with the PC."
-        UIBackgroundModes:
-          - audio
+        UIRequiredDeviceCapabilities:
+          - arm64
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
