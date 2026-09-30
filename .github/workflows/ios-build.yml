@@ -31,3 +31,34 @@ jobs:
 
       - name: Build iOS Simulator
         run: xcodebuild -project AIOBS-iOS.xcodeproj -scheme AIOBS-iOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' EXCLUDED_ARCHS=x86_64 CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build unsigned iOS device archive
+        run: |
+          set -e
+
+          ARCHIVE_PATH="$RUNNER_TEMP/AIOBS-iOS.xcarchive"
+          PAYLOAD_PATH="$RUNNER_TEMP/Payload"
+          IPA_PATH="$RUNNER_TEMP/AIOBS-iOS-unsigned.ipa"
+
+          rm -rf "$ARCHIVE_PATH"
+          rm -rf "$PAYLOAD_PATH"
+          rm -f "$IPA_PATH"
+
+          xcodebuild -project AIOBS-iOS.xcodeproj -scheme AIOBS-iOS -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -archivePath "$ARCHIVE_PATH" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+
+          mkdir -p "$PAYLOAD_PATH"
+
+          cp -R "$ARCHIVE_PATH/Products/Applications/AIOBS-iOS.app" "$PAYLOAD_PATH/"
+
+          cd "$RUNNER_TEMP"
+
+          /usr/bin/zip -qry "$IPA_PATH" Payload
+
+          ls -lh "$IPA_PATH"
+
+      - name: Upload unsigned iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIOBS-iOS-unsigned-ipa
+          path: ${{ runner.temp }}/AIOBS-iOS-unsigned.ipa
+          if-no-files-found: error
