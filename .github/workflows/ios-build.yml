@@ -14,34 +14,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Xcode
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: Show toolchain
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app
           xcodebuild -version
           swift --version
-
-      - name: iOS SDK
-        run: |
-          xcrun --sdk iphoneos --show-sdk-version
-          xcrun --sdk iphonesimulator --show-sdk-version
+          xcodebuild -showsdks | grep iphonesimulator
 
       - name: Install XcodeGen
-        run: |
-          brew install xcodegen
+        run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: |
-          xcodegen generate
+        run: xcodegen generate
 
       - name: Build iOS Simulator
-        run: |
-          xcodebuild \
-            -project AIOBS-iOS.xcodeproj \
-            -scheme AIOBS-iOS \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \\
-            -arch arm64 \\
-            ARCHS=arm64 \\
-            ONLY_ACTIVE_ARCH=YES \\
-            CODE_SIGNING_ALLOWED=NO \
-            build
+        run: xcodebuild -project AIOBS-iOS.xcodeproj -scheme AIOBS-iOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -arch arm64 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
