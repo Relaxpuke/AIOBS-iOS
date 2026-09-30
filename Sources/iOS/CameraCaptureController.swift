@@ -1,119 +1,144 @@
 import AVFoundation
 import Foundation
 
-final class CameraCaptureController: NSObject {
-
+final class CameraCaptureController: NSObject, @unchecked Sendable {
     let session = AVCaptureSession()
 
-    private let sessionQueue = DispatchQueue(
-        label: "com.relaxpuke.aiobs.ios.camera"
-    )
+    var onSampleBuffer: ((CMSampleBuffer) -> Void)?
+    var onStatus: ((String) -> Void)?
 
+    private let sessionQueue = DispatchQueue(label: "com.relaxpuke.aiobs.camera")
     private let videoOutput = AVCaptureVideoDataOutput()
 
     private var configured = false
 
-    var onSampleBuffer: ((CMSampleBuffer) -> Void)?
-
-    func requestPermissionAndStart() {
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-            guard granted else {
-                return
+    func start() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            sessionQueue.async { [weak self] in
+                self?.configureAndStart()
             }
 
-            self?.configureAndStart()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                guard let self else { return }
+
+                if granted {
+                    self.sessionQueue.async {
+                        self.configureAndStart()
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.onStatus?("CAMERA_DENIED")
+                    }
+                }
+            }
+
+        case .denied, .restricted:
+            DispatchQueue.main.async { [weak self] in
+                self?.onStatus?("CAMERA_DENIED")
+            }
+
+        @unknown default:
+            DispatchQueue.main.async { [weak self] in
+                self?.onStatus?("CAMERA_UNKNOWN")
+            }
         }
     }
 
     func stop() {
         sessionQueue.async { [weak self] in
-            guard let self else {
-                return
-            }
+            guard let self else { return }
 
             if self.session.isRunning {
                 self.session.stopRunning()
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                self?.onStatus?("CAMERA_STOPPED")
             }
         }
     }
 
     private func configureAndStart() {
-        sessionQueue.async { [weak self] in
-            guard let self else {
+        if !configured {
+            session.beginConfiguration()
+            session.sessionPreset = .hd1280x720
+
+            guard
+                let camera = AVCaptureDevice.default(
+                    .builtInWideAngleCamera,
+                    for: .video,
+                    position: .back
+                )
+            else {
+                session.commitConfiguration()
+
+                DispatchQueue.main.async { [weak self] in
+                    self?.onStatus?("CAMERA_NOT_FOUND")
+                }
                 return
             }
 
-            if !self.configured {
-                self.configureSession()
-                self.configured = true
-            }
+            do {
+                let input = try AVCaptureDeviceInput(device: camera)
 
-            guard !self.session.isRunning else {
+                guard session.canAddInput(input) else {
+                    session.commitConfiguration()
+
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onStatus?("CAMERA_INPUT_FAILED")
+                    }
+                    return
+                }
+
+                session.addInput(input)
+
+                videoOutput.alwaysDiscardsLateVideoFrames = true
+                videoOutput.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String:
+                        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+                ]
+
+                guard session.canAddOutput(videoOutput) else {
+                    session.commitConfiguration()
+
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onStatus?("CAMERA_OUTPUT_FAILED")
+                    }
+                    return
+                }
+
+                videoOutput.setSampleBufferDelegate(
+                    self,
+                    queue: sessionQueue
+                )
+
+                session.addOutput(videoOutput)
+
+                configured = true
+                session.commitConfiguration()
+            } catch {
+                session.commitConfiguration()
+
+                DispatchQueue.main.async { [weak self] in
+                    self?.onStatus?("CAMERA_CONFIG_ERROR: \(error.localizedDescription)")
+                }
                 return
             }
-
-            self.session.startRunning()
-        }
-    }
-
-    private func configureSession() {
-        session.beginConfiguration()
-
-        session.sessionPreset = .hd1280x720
-
-        defer {
-            session.commitConfiguration()
         }
 
-        guard let camera = AVCaptureDevice.default(
-            .builtInWideAngleCamera,
-            for: .video,
-            position: .back
-        ) else {
-            return
+        if !session.isRunning {
+            session.startRunning()
         }
 
-        guard let input = try? AVCaptureDeviceInput(device: camera) else {
-            return
-        }
-
-        guard session.canAddInput(input) else {
-            return
-        }
-
-        session.addInput(input)
-
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-
-        videoOutput.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String:
-                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        ]
-
-        videoOutput.setSampleBufferDelegate(
-            self,
-            queue: sessionQueue
-        )
-
-        guard session.canAddOutput(videoOutput) else {
-            return
-        }
-
-        session.addOutput(videoOutput)
-
-        if let connection = videoOutput.connection(
-            with: .video
-        ) {
-            if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .portrait
-            }
+        DispatchQueue.main.async { [weak self] in
+            self?.onStatus?("CAMERA_READY")
         }
     }
 }
 
-extension CameraCaptureController:
-    AVCaptureVideoDataOutputSampleBufferDelegate {
-
+extension CameraCaptureController: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(
         _ output: AVCaptureOutput,
         didOutput sampleBuffer: CMSampleBuffer,

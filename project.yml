@@ -39,6 +39,8 @@ targets:
       properties:
         NSCameraUsageDescription: "AIOBS uses the camera for live video capture and tracking."
         NSLocalNetworkUsageDescription: "AIOBS uses the local network to stream video and exchange tracking data with the PC."
+        NSAppTransportSecurity:
+              NSAllowsLocalNetworking: true
         UIRequiredDeviceCapabilities:
           - arm64
         UISupportedInterfaceOrientations:
