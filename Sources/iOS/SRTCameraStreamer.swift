@@ -29,23 +29,24 @@ final class SRTCameraStreamer {
 
         var mixerVideoSettings = await mixer.videoMixerSettings
         mixerVideoSettings.mode = .passthrough
+
         await mixer.setVideoMixerSettings(
             mixerVideoSettings
         )
 
-        try await mixer.setFrameRate(30)
+        await mixer.setFrameRate(30)
 
         let videoSettings = VideoCodecSettings(
             videoSize: .init(
                 width: 1280,
                 height: 720
             ),
+            bitRate: 4 * 1000 * 1000,
             profileLevel:
                 kVTProfileLevel_H264_Main_AutoLevel as String,
-            bitRate: 4 * 1000 * 1000,
-            maxKeyFrameIntervalDuration: 1,
             scalingMode: .trim,
             bitRateMode: .average,
+            maxKeyFrameIntervalDuration: 1,
             allowFrameReordering: false,
             isHardwareEncoderEnabled: true
         )
@@ -60,10 +61,16 @@ final class SRTCameraStreamer {
             stream
         )
 
-        let url =
-            "srt://\(host):\(port)?mode=caller&transtype=live"
+        guard let srtURL = URL(
+            string:
+                "srt://\(host):\(port)?mode=caller&transtype=live"
+        ) else {
+            throw URLError(.badURL)
+        }
 
-        try await connection.connect(url)
+        try await connection.connect(
+            srtURL
+        )
 
         await stream.publish()
 
