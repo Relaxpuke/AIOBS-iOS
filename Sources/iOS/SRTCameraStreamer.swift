@@ -34,7 +34,7 @@ final class SRTCameraStreamer {
             mixerVideoSettings
         )
 
-        await mixer.setFrameRate(30)
+        try await mixer.setFrameRate(30)
 
         let videoSettings = VideoCodecSettings(
             videoSize: .init(
@@ -48,7 +48,7 @@ final class SRTCameraStreamer {
             bitRateMode: .average,
             maxKeyFrameIntervalDuration: 1,
             allowFrameReordering: false,
-            isHardwareEncoderEnabled: true
+            isHardwareAcceleratedEnabled: true
         )
 
         await stream.setVideoSettings(
