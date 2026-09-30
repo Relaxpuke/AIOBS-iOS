@@ -51,7 +51,7 @@ final class SRTCameraStreamer {
             isHardwareAcceleratedEnabled: true
         )
 
-        await stream.setVideoSettings(
+        try await stream.setVideoSettings(
             videoSettings
         )
 
