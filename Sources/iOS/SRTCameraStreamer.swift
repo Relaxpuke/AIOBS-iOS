@@ -84,6 +84,8 @@ final class SRTCameraStreamer {
             return
         }
 
+        let mixer = self.mixer
+
         Task {
             await mixer.append(
                 sampleBuffer
@@ -97,6 +99,9 @@ final class SRTCameraStreamer {
         }
 
         running = false
+
+        let stream = self.stream
+        let connection = self.connection
 
         Task {
             await stream.close()
