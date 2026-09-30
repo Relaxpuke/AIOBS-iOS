@@ -18,10 +18,9 @@ final class SRTCameraStreamer {
 
     private var running = false
 
-    func start(
-        host: String,
-        port: Int
-    ) async throws {
+    
+    @MainActor
+    func start(host: String, port: Int) async throws {
 
         guard !running else {
             return
@@ -93,7 +92,8 @@ final class SRTCameraStreamer {
         }
     }
 
-    func stop() {
+    @MainActor
+    func stop() {    
         guard running else {
             return
         }
