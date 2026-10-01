@@ -292,7 +292,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
             resolutions: resolutions,
             minExposureBias: safeMinBias,
             maxExposureBias: safeMaxBias,
-            maxZoomFactor: max(CGFloat(1.0), camera.maxAvailableVideoZoomFactor)
+            maxZoomFactor: Float(max(CGFloat(1.0), camera.maxAvailableVideoZoomFactor))
         )
     }
 
@@ -500,7 +500,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                 whiteBalanceMode: settings.whiteBalanceMode,
                 whiteBalanceTemperature: min(8000, max(2000, settings.whiteBalanceTemperature)),
                 whiteBalanceTint: min(150, max(-150, settings.whiteBalanceTint)),
-                zoomFactor: zoom
+                zoomFactor: Float(zoom)
             )
 
             if publishCapabilitiesAfterApply {
