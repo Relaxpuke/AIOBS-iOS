@@ -1,11 +1,11 @@
 import AVFoundation
 import Foundation
+import UIKit
 import HaishinKit
 import SRTHaishinKit
 import VideoToolbox
 
 final class SRTCameraStreamer {
-
     private let mixer = MediaMixer(
         captureSessionMode: .manual
     )
@@ -18,10 +18,13 @@ final class SRTCameraStreamer {
 
     private var running = false
 
-    
     @MainActor
-    func start(host: String, port: Int) async throws {
-
+    func start(
+        host: String,
+        port: Int,
+        settings: CameraSettings,
+        interfaceOrientation: UIInterfaceOrientation
+    ) async throws {
         guard !running else {
             return
         }
@@ -33,14 +36,29 @@ final class SRTCameraStreamer {
             mixerVideoSettings
         )
 
-        try await mixer.setFrameRate(30)
+        let fps = max(1, Int(settings.fps.rounded()))
+        try await mixer.setFrameRate(fps)
+
+        let portrait =
+            interfaceOrientation == .portrait ||
+            interfaceOrientation == .portraitUpsideDown
+
+        // CameraCaptureController rotates the VideoDataOutput frames to the
+        // current interface orientation. Encode the corresponding dimensions
+        // so a portrait stream stays portrait on the PC side.
+        let streamWidth = portrait ? settings.height : settings.width
+        let streamHeight = portrait ? settings.width : settings.height
 
         let videoSettings = VideoCodecSettings(
             videoSize: .init(
-                width: 1280,
-                height: 720
+                width: streamWidth,
+                height: streamHeight
             ),
-            bitRate: 4 * 1000 * 1000,
+            bitRate: bitRate(
+                width: streamWidth,
+                height: streamHeight,
+                fps: settings.fps
+            ),
             profileLevel:
                 kVTProfileLevel_H264_Main_AutoLevel as String,
             scalingMode: .trim,
@@ -93,7 +111,7 @@ final class SRTCameraStreamer {
     }
 
     @MainActor
-    func stop() {    
+    func stop() {
         guard running else {
             return
         }
@@ -107,5 +125,23 @@ final class SRTCameraStreamer {
             await stream.close()
             await connection.close()
         }
+    }
+
+    private func bitRate(
+        width: Int,
+        height: Int,
+        fps: Double
+    ) -> Int {
+        let pixels = Double(max(1, width * height))
+        let frameScale = max(1.0, fps / 30.0)
+        let pixelScale = pixels / Double(1280 * 720)
+
+        let estimated = 2_000_000.0 * pixelScale * frameScale
+        return Int(
+            min(
+                24_000_000.0,
+                max(2_000_000.0, estimated)
+            )
+        )
     }
 }
