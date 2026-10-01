@@ -36,7 +36,7 @@ final class SRTCameraStreamer {
             mixerVideoSettings
         )
 
-        let fps = max(1, Int(settings.fps.rounded()))
+        let fps = max(1.0, settings.fps)
         try await mixer.setFrameRate(fps)
 
         let portrait =

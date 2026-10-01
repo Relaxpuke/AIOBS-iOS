@@ -396,7 +396,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
 
             applyVideoOrientationLocked()
         } catch {
-            try? camera.unlockForConfiguration()
+            camera.unlockForConfiguration()
 
             DispatchQueue.main.async { [weak self] in
                 self?.onStatus?(
