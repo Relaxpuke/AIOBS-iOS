@@ -292,7 +292,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
             resolutions: resolutions,
             minExposureBias: safeMinBias,
             maxExposureBias: safeMaxBias,
-            maxZoomFactor: max(1.0, camera.maxAvailableVideoZoomFactor)
+            maxZoomFactor: max(CGFloat(1.0), camera.maxAvailableVideoZoomFactor)
         )
     }
 
@@ -417,8 +417,8 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
             max(camera.minExposureTargetBias, settings.exposureBiasEV)
         )
         let zoom = min(
-            max(1.0, camera.maxAvailableVideoZoomFactor),
-            max(1.0, settings.zoomFactor)
+            max(CGFloat(1.0), camera.maxAvailableVideoZoomFactor),
+            max(CGFloat(1.0), CGFloat(settings.zoomFactor))
         )
 
         do {
@@ -602,7 +602,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
             whiteBalanceMode: currentSettings.whiteBalanceMode,
             whiteBalanceTemperature: currentSettings.whiteBalanceTemperature,
             whiteBalanceTint: currentSettings.whiteBalanceTint,
-            zoomFactor: camera.videoZoomFactor
+            zoomFactor: Float(camera.videoZoomFactor)
         )
 
         DispatchQueue.main.async { [weak self] in
