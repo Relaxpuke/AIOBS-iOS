@@ -111,10 +111,7 @@ final class TransportViewModel: ObservableObject {
     }
 
     func updateInterfaceOrientation(_ orientation: UIInterfaceOrientation) {
-        guard orientation != .unknown,
-              orientation != .faceUp,
-              orientation != .faceDown
-        else {
+        guard orientation != .unknown else {
             return
         }
 
@@ -134,7 +131,6 @@ final class TransportViewModel: ObservableObject {
 
     func startTransport(host: String, bitrateKbps: Int) {
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        pcHost = host
 
         guard !host.isEmpty else {
             status = "ENTER_PC_IP"
