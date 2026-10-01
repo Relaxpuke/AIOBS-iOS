@@ -69,9 +69,10 @@ final class TransportViewModel: ObservableObject {
     }
 
     func updateInterfaceOrientation(_ orientation: UIInterfaceOrientation) {
-        guard orientation != .unknown,
-              orientation != .faceUp,
-              orientation != .faceDown
+        guard orientation == .portrait ||
+              orientation == .portraitUpsideDown ||
+              orientation == .landscapeLeft ||
+              orientation == .landscapeRight
         else {
             return
         }
@@ -666,7 +667,7 @@ struct CameraSettingsView: View {
                         model.applyCameraSettings(settings)
                         dismiss()
                     }
-                    .fontWeight(.semibold)
+                    .font(.system(size: 17, weight: .semibold))
                 }
             }
             .onAppear {
