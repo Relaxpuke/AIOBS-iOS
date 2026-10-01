@@ -9,6 +9,8 @@ struct CameraResolutionOption: Identifiable, Hashable, Sendable {
     let supportedFPS: [Double]
     let minISO: Float
     let maxISO: Float
+    let minExposureSeconds: Double
+    let maxExposureSeconds: Double
 
     var title: String {
         "\(width)×\(height)"
@@ -17,13 +19,21 @@ struct CameraResolutionOption: Identifiable, Hashable, Sendable {
 
 struct CameraCapabilities: Sendable {
     let resolutions: [CameraResolutionOption]
+    let minExposureBias: Float
+    let maxExposureBias: Float
+    let maxZoomFactor: Float
 
-    static let empty = CameraCapabilities(resolutions: [])
+    static let empty = CameraCapabilities(
+        resolutions: [],
+        minExposureBias: -8,
+        maxExposureBias: 8,
+        maxZoomFactor: 1
+    )
 }
 
 enum CameraExposureMode: String, CaseIterable, Identifiable, Sendable {
     case auto
-    case manualISO
+    case manual
 
     var id: String { rawValue }
 
@@ -31,8 +41,40 @@ enum CameraExposureMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .auto:
             return "Auto"
-        case .manualISO:
-            return "Manual ISO"
+        case .manual:
+            return "Manual"
+        }
+    }
+}
+
+enum CameraFocusMode: String, CaseIterable, Identifiable, Sendable {
+    case auto
+    case manual
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto:
+            return "Auto"
+        case .manual:
+            return "Manual"
+        }
+    }
+}
+
+enum CameraWhiteBalanceMode: String, CaseIterable, Identifiable, Sendable {
+    case auto
+    case manual
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto:
+            return "Auto"
+        case .manual:
+            return "Manual"
         }
     }
 }
@@ -42,8 +84,20 @@ struct CameraSettings: Equatable, Sendable {
     var width: Int
     var height: Int
     var fps: Double
+
     var exposureMode: CameraExposureMode
     var iso: Float
+    var exposureDurationSeconds: Double
+    var exposureBiasEV: Float
+
+    var focusMode: CameraFocusMode
+    var focusPosition: Float
+
+    var whiteBalanceMode: CameraWhiteBalanceMode
+    var whiteBalanceTemperature: Float
+    var whiteBalanceTint: Float
+
+    var zoomFactor: Float
 
     static let `default` = CameraSettings(
         resolutionID: 0,
@@ -51,7 +105,15 @@ struct CameraSettings: Equatable, Sendable {
         height: 720,
         fps: 30,
         exposureMode: .auto,
-        iso: 100
+        iso: 100,
+        exposureDurationSeconds: 1.0 / 30.0,
+        exposureBiasEV: 0,
+        focusMode: .auto,
+        focusPosition: 0.5,
+        whiteBalanceMode: .auto,
+        whiteBalanceTemperature: 5000,
+        whiteBalanceTint: 0,
+        zoomFactor: 1
     )
 }
 
@@ -60,10 +122,23 @@ struct CameraStateSnapshot: Sendable {
     let width: Int
     let height: Int
     let fps: Double
+
     let iso: Float
     let minISO: Float
     let maxISO: Float
+
     let exposureMode: CameraExposureMode
+    let exposureDurationSeconds: Double
+    let exposureBiasEV: Float
+
+    let focusMode: CameraFocusMode
+    let focusPosition: Float
+
+    let whiteBalanceMode: CameraWhiteBalanceMode
+    let whiteBalanceTemperature: Float
+    let whiteBalanceTint: Float
+
+    let zoomFactor: Float
 
     var resolutionText: String {
         "\(width)×\(height)"
@@ -82,6 +157,38 @@ struct CameraStateSnapshot: Sendable {
         }
         return "ISO \(Int(iso.rounded()))"
     }
+
+    var shutterText: String {
+        guard exposureDurationSeconds > 0 else {
+            return "Auto"
+        }
+        if exposureDurationSeconds >= 0.5 {
+            return String(format: "%.2fs", exposureDurationSeconds)
+        }
+        return "1/\(max(1, Int((1.0 / exposureDurationSeconds).rounded())))"
+    }
+
+    var exposureSummary: String {
+        if exposureMode == .auto {
+            return "Auto"
+        }
+        return "ISO \(Int(iso.rounded())) · \(shutterText)"
+    }
+
+    var focusSummary: String {
+        focusMode == .auto ? "Focus Auto" : String(format: "Focus %.2f", focusPosition)
+    }
+
+    var whiteBalanceSummary: String {
+        if whiteBalanceMode == .auto {
+            return "WB Auto"
+        }
+        return "WB \(Int(whiteBalanceTemperature.rounded()))K"
+    }
+}
+
+struct CameraRuntimeStats: Sendable {
+    let fps: Double
 }
 
 func cameraFPSValues(for format: AVCaptureDevice.Format) -> [Double] {

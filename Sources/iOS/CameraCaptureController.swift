@@ -27,6 +27,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
     var onStatus: ((String) -> Void)?
     var onCapabilities: ((CameraCapabilities) -> Void)?
     var onCameraState: ((CameraStateSnapshot) -> Void)?
+    var onRuntimeStats: ((CameraRuntimeStats) -> Void)?
 
     private let sessionQueue = DispatchQueue(label: "com.relaxpuke.aiobs.camera")
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -37,6 +38,9 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
 
     private var capabilities: CameraCapabilities = .empty
     private var currentSettings = CameraSettings.default
+
+    private var statsWindowStart = ProcessInfo.processInfo.systemUptime
+    private var statsFrameCount = 0
 
     func start() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -204,8 +208,13 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
             height: Int,
             fps: Set<Int>,
             minISO: Float,
-            maxISO: Float
+            maxISO: Float,
+            minExposureSeconds: Double,
+            maxExposureSeconds: Double
         )] = [:]
+
+        let minBias = camera.minExposureTargetBias
+        let maxBias = camera.maxExposureTargetBias
 
         for format in camera.formats {
             let dimensions = cameraFormatDimensions(format)
@@ -218,14 +227,27 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                 continue
             }
 
+            let minExposure = max(
+                1e-6,
+                format.minExposureDuration.seconds.isFinite
+                    ? format.minExposureDuration.seconds
+                    : 1.0 / 240.0
+            )
+            let maxExposure = max(
+                minExposure,
+                format.maxExposureDuration.seconds.isFinite
+                    ? format.maxExposureDuration.seconds
+                    : 1.0
+            )
+
             let key = "\(dimensions.width)x\(dimensions.height)"
 
             if var group = groups[key] {
-                group.fps.formUnion(
-                    fpsValues.map { Int($0.rounded()) }
-                )
+                group.fps.formUnion(fpsValues.map { Int($0.rounded()) })
                 group.minISO = min(group.minISO, format.minISO)
                 group.maxISO = max(group.maxISO, format.maxISO)
+                group.minExposureSeconds = min(group.minExposureSeconds, minExposure)
+                group.maxExposureSeconds = max(group.maxExposureSeconds, maxExposure)
                 groups[key] = group
             } else {
                 groups[key] = (
@@ -233,10 +255,15 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                     height: dimensions.height,
                     fps: Set(fpsValues.map { Int($0.rounded()) }),
                     minISO: format.minISO,
-                    maxISO: format.maxISO
+                    maxISO: format.maxISO,
+                    minExposureSeconds: minExposure,
+                    maxExposureSeconds: maxExposure
                 )
             }
         }
+
+        let safeMinBias = min(minBias, maxBias)
+        let safeMaxBias = max(minBias, maxBias)
 
         let resolutions = groups.values
             .map { group in
@@ -246,7 +273,9 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                     height: group.height,
                     supportedFPS: group.fps.sorted().map(Double.init),
                     minISO: group.minISO,
-                    maxISO: group.maxISO
+                    maxISO: group.maxISO,
+                    minExposureSeconds: group.minExposureSeconds,
+                    maxExposureSeconds: group.maxExposureSeconds
                 )
             }
             .filter { !$0.supportedFPS.isEmpty }
@@ -259,7 +288,12 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                 return $0.title < $1.title
             }
 
-        return CameraCapabilities(resolutions: resolutions)
+        return CameraCapabilities(
+            resolutions: resolutions,
+            minExposureBias: safeMinBias,
+            maxExposureBias: safeMaxBias,
+            maxZoomFactor: max(1.0, camera.maxAvailableVideoZoomFactor)
+        )
     }
 
     private func chooseDefaultSettings(
@@ -288,19 +322,36 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                     height: option.height,
                     fps: fps,
                     exposureMode: .auto,
-                    iso: max(option.minISO, min(100, option.maxISO))
+                    iso: max(option.minISO, min(100, option.maxISO)),
+                    exposureDurationSeconds: 1.0 / max(1.0, fps),
+                    exposureBiasEV: 0,
+                    focusMode: .auto,
+                    focusPosition: 0.5,
+                    whiteBalanceMode: .auto,
+                    whiteBalanceTemperature: 5000,
+                    whiteBalanceTint: 0,
+                    zoomFactor: 1
                 )
             }
         }
 
         let option = capabilities.resolutions.first!
+        let fps = nearestFPS(to: 30, in: option.supportedFPS)
         return CameraSettings(
             resolutionID: option.id,
             width: option.width,
             height: option.height,
-            fps: nearestFPS(to: 30, in: option.supportedFPS),
+            fps: fps,
             exposureMode: .auto,
-            iso: max(option.minISO, min(100, option.maxISO))
+            iso: max(option.minISO, min(100, option.maxISO)),
+            exposureDurationSeconds: 1.0 / max(1.0, fps),
+            exposureBiasEV: 0,
+            focusMode: .auto,
+            focusPosition: 0.5,
+            whiteBalanceMode: .auto,
+            whiteBalanceTemperature: 5000,
+            whiteBalanceTint: 0,
+            zoomFactor: 1
         )
     }
 
@@ -350,9 +401,24 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
 
         let minISO = format.minISO
         let maxISO = format.maxISO
-        let clampedISO = min(
-            maxISO,
-            max(minISO, settings.iso)
+        let clampedISO = min(maxISO, max(minISO, settings.iso))
+
+        let minExposure = max(1e-6, format.minExposureDuration.seconds)
+        let formatMaxExposure = max(minExposure, format.maxExposureDuration.seconds)
+        let framePeriod = 1.0 / max(1.0, actualFPS)
+        let maxExposure = max(minExposure, min(formatMaxExposure, framePeriod))
+        let clampedExposure = min(
+            maxExposure,
+            max(minExposure, settings.exposureDurationSeconds)
+        )
+
+        let bias = min(
+            camera.maxExposureTargetBias,
+            max(camera.minExposureTargetBias, settings.exposureBiasEV)
+        )
+        let zoom = min(
+            max(1.0, camera.maxAvailableVideoZoomFactor),
+            max(1.0, settings.zoomFactor)
         )
 
         do {
@@ -364,13 +430,13 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                 value: 1,
                 timescale: Int32(max(1, Int(actualFPS.rounded())))
             )
-
             camera.activeVideoMinFrameDuration = duration
             camera.activeVideoMaxFrameDuration = duration
 
-            if settings.exposureMode == .manualISO {
+            if settings.exposureMode == .manual,
+               camera.isExposureModeSupported(.custom) {
                 camera.setExposureModeCustom(
-                    duration: camera.exposureDuration,
+                    duration: CMTime(seconds: clampedExposure, preferredTimescale: 1_000_000),
                     iso: clampedISO
                 )
             } else if camera.isExposureModeSupported(.continuousAutoExposure) {
@@ -379,6 +445,45 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                 camera.exposureMode = .autoExpose
             }
 
+            camera.setExposureTargetBias(bias, completionHandler: nil)
+
+            if settings.focusMode == .manual,
+               camera.isFocusModeSupported(.locked),
+               camera.isLockingFocusWithCustomLensPositionSupported {
+                camera.setFocusModeLocked(
+                    lensPosition: min(1.0, max(0.0, settings.focusPosition)),
+                    completionHandler: nil
+                )
+            } else if camera.isFocusModeSupported(.continuousAutoFocus) {
+                camera.focusMode = .continuousAutoFocus
+            } else if camera.isFocusModeSupported(.autoFocus) {
+                camera.focusMode = .autoFocus
+            }
+
+            if settings.whiteBalanceMode == .manual,
+               camera.isWhiteBalanceModeSupported(.locked),
+               camera.isLockingWhiteBalanceWithCustomDeviceGainsSupported {
+                let temperature = max(2000, min(8000, settings.whiteBalanceTemperature))
+                let tint = max(-150, min(150, settings.whiteBalanceTint))
+                let values = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(
+                    temperature: temperature,
+                    tint: tint
+                )
+                var gains = camera.deviceWhiteBalanceGains(
+                    for: values
+                )
+                let maxGain = camera.maxWhiteBalanceGain
+                gains.redGain = max(1.0, min(maxGain, gains.redGain))
+                gains.greenGain = max(1.0, min(maxGain, gains.greenGain))
+                gains.blueGain = max(1.0, min(maxGain, gains.blueGain))
+                camera.setWhiteBalanceModeLocked(with: gains, completionHandler: nil)
+            } else if camera.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                camera.whiteBalanceMode = .continuousAutoWhiteBalance
+            } else if camera.isWhiteBalanceModeSupported(.autoWhiteBalance) {
+                camera.whiteBalanceMode = .autoWhiteBalance
+            }
+
+            camera.videoZoomFactor = zoom
             camera.unlockForConfiguration()
 
             currentSettings = CameraSettings(
@@ -387,7 +492,15 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
                 height: resolution.height,
                 fps: actualFPS,
                 exposureMode: settings.exposureMode,
-                iso: clampedISO
+                iso: clampedISO,
+                exposureDurationSeconds: clampedExposure,
+                exposureBiasEV: bias,
+                focusMode: settings.focusMode,
+                focusPosition: min(1.0, max(0.0, settings.focusPosition)),
+                whiteBalanceMode: settings.whiteBalanceMode,
+                whiteBalanceTemperature: min(8000, max(2000, settings.whiteBalanceTemperature)),
+                whiteBalanceTint: min(150, max(-150, settings.whiteBalanceTint)),
+                zoomFactor: zoom
             )
 
             if publishCapabilitiesAfterApply {
@@ -470,6 +583,7 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
         guard let camera else { return }
 
         let dimensions = cameraFormatDimensions(camera.activeFormat)
+        let exposureDuration = camera.exposureDuration.seconds
         let snapshot = CameraStateSnapshot(
             resolutionID: currentSettings.resolutionID,
             width: dimensions.width,
@@ -478,7 +592,17 @@ final class CameraCaptureController: NSObject, @unchecked Sendable {
             iso: camera.iso,
             minISO: camera.activeFormat.minISO,
             maxISO: camera.activeFormat.maxISO,
-            exposureMode: currentSettings.exposureMode
+            exposureMode: currentSettings.exposureMode,
+            exposureDurationSeconds: exposureDuration.isFinite && exposureDuration > 0
+                ? exposureDuration
+                : currentSettings.exposureDurationSeconds,
+            exposureBiasEV: camera.exposureTargetBias,
+            focusMode: currentSettings.focusMode,
+            focusPosition: camera.lensPosition,
+            whiteBalanceMode: currentSettings.whiteBalanceMode,
+            whiteBalanceTemperature: currentSettings.whiteBalanceTemperature,
+            whiteBalanceTint: currentSettings.whiteBalanceTint,
+            zoomFactor: camera.videoZoomFactor
         )
 
         DispatchQueue.main.async { [weak self] in
@@ -508,5 +632,19 @@ extension CameraCaptureController: AVCaptureVideoDataOutputSampleBufferDelegate 
         from connection: AVCaptureConnection
     ) {
         onSampleBuffer?(sampleBuffer)
+
+        statsFrameCount += 1
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = now - statsWindowStart
+        if elapsed >= 0.5 {
+            let fps = Double(statsFrameCount) / elapsed
+            statsFrameCount = 0
+            statsWindowStart = now
+
+            let stats = CameraRuntimeStats(fps: fps)
+            DispatchQueue.main.async { [weak self] in
+                self?.onRuntimeStats?(stats)
+            }
+        }
     }
 }

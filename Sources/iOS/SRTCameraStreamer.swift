@@ -23,6 +23,7 @@ final class SRTCameraStreamer {
         host: String,
         port: Int,
         settings: CameraSettings,
+        bitrateKbps: Int,
         interfaceOrientation: UIInterfaceOrientation
     ) async throws {
         guard !running else {
@@ -36,16 +37,13 @@ final class SRTCameraStreamer {
             mixerVideoSettings
         )
 
-        let fps = max(1.0, settings.fps)
-        try await mixer.setFrameRate(fps)
+        let fps = max(1, Int(settings.fps.rounded()))
+        try await mixer.setFrameRate(Double(fps))
 
         let portrait =
             interfaceOrientation == .portrait ||
             interfaceOrientation == .portraitUpsideDown
 
-        // CameraCaptureController rotates the VideoDataOutput frames to the
-        // current interface orientation. Encode the corresponding dimensions
-        // so a portrait stream stays portrait on the PC side.
         let streamWidth = portrait ? settings.height : settings.width
         let streamHeight = portrait ? settings.width : settings.height
 
@@ -54,11 +52,7 @@ final class SRTCameraStreamer {
                 width: streamWidth,
                 height: streamHeight
             ),
-            bitRate: bitRate(
-                width: streamWidth,
-                height: streamHeight,
-                fps: settings.fps
-            ),
+            bitRate: max(256_000, bitrateKbps * 1_000),
             profileLevel:
                 kVTProfileLevel_H264_Main_AutoLevel as String,
             scalingMode: .trim,
@@ -125,23 +119,5 @@ final class SRTCameraStreamer {
             await stream.close()
             await connection.close()
         }
-    }
-
-    private func bitRate(
-        width: Int,
-        height: Int,
-        fps: Double
-    ) -> Int {
-        let pixels = Double(max(1, width * height))
-        let frameScale = max(1.0, fps / 30.0)
-        let pixelScale = pixels / Double(1280 * 720)
-
-        let estimated = 2_000_000.0 * pixelScale * frameScale
-        return Int(
-            min(
-                24_000_000.0,
-                max(2_000_000.0, estimated)
-            )
-        )
     }
 }
